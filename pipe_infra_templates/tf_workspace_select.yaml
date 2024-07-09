@@ -1,0 +1,24 @@
+steps:      
+# Terraform Select Workspace Task
+- task: TerraformTaskV4@4
+  displayName: "Select TF Workspace"
+  condition: succeeded()
+  inputs:
+    provider: "azurerm"
+    command: "custom"
+    customCommand: 'workspace'
+    commandOptions: 'select -or-create=true ${{ parameters.Environment }}'
+    outputTo: 'console'
+    environmentServiceNameAzureRM: "${{ parameters.backendServiceArm }}"
+    workingDirectory: "$(System.DefaultWorkingDirectory)/${{ parameters.workingDirectory }}/"
+- task: TerraformTaskV4@4
+  displayName: "List TF Workspace"
+  condition: succeeded()
+  inputs:
+    provider: "azurerm"
+    command: "custom"
+    customCommand: 'workspace'
+    commandOptions: 'list'
+    outputTo: 'console'
+    environmentServiceNameAzureRM: "${{ parameters.backendServiceArm }}"
+    workingDirectory: "$(System.DefaultWorkingDirectory)/${{ parameters.workingDirectory }}/"

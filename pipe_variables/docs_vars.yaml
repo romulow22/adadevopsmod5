@@ -1,0 +1,9 @@
+variables:
+  - name: terraformDocsVersion
+    value: '0.18.0'
+  - name: serviceConnectionName
+    value: sc-azsub
+  - name: WorkingDirectory
+    value: 'tf_infra'
+  - name: BuildAgent
+    value: ubuntu-latest

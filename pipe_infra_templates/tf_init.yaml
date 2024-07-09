@@ -1,0 +1,14 @@
+steps:      
+# Terraform Init Task
+- task: TerraformTaskV4@4
+  displayName: "Initializing Terraform"
+  inputs:
+    provider: "azurerm"
+    command: "init"
+    commandOptions: '-upgrade -reconfigure'
+    backendServiceArm: "${{ parameters.backendServiceArm }}"
+    backendAzureRmResourceGroupName: "${{ parameters.backendAzureRmResourceGroupName }}"
+    backendAzureRmStorageAccountName: "${{ parameters.backendAzureRmStorageAccountName }}"
+    backendAzureRmContainerName: "${{ parameters.backendAzureRmContainerName }}"
+    backendAzureRmKey: "${{ parameters.backendAzureRmKey }}"
+    workingDirectory: "$(System.DefaultWorkingDirectory)/${{ parameters.workingDirectory }}/"

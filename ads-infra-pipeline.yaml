@@ -1,0 +1,174 @@
+# Main Infra pipeline
+name: $(BuildDefinitionName)_$(date:yyyyMMdd)$(rev:.r)
+
+trigger: none # CI trigger is off
+pr: none # PR trigger is off
+
+######################
+#DECLARE PARAMETERS:-
+######################
+parameters:
+  - name: action
+    displayName: Action
+    type: string
+    default: 'plan'
+    values: ['validate', 'checkov', 'plan', 'apply', 'plan_destroy', 'apply_destroy']
+  - name: project
+    displayName: Project name
+    type: string
+    default: 'siada'
+  - name: environmnent
+    displayName: Environmnent
+    type: string
+    default: 'des'
+    values: ['des', 'tqs', 'prd']
+  - name: tf_loglevel
+    displayName: Terraform Log Level
+    type: string
+    default: 'INFO'
+    values: ['INFO', 'ERROR', 'WARN', 'DEBUG']
+
+######################
+#DECLARE VARIABLES:-
+######################
+variables:
+  - group: 'tf-${{ parameters.project }}-backend-${{ parameters.environmnent }}'
+  - group: 'tf-${{ parameters.project }}-infra-${{ parameters.environmnent }}'
+  - group: tf-infra-support
+  - template: pipe_variables/infra_vars.yaml
+    parameters:
+      project: ${{ parameters.project }}
+  - name: Environment
+    value: ${{ parameters.environmnent }}
+  - name: Action
+    value: ${{ parameters.action }}
+  - name: Project
+    value: ${{ parameters.project }}
+  - name: Loglevel
+    value: ${{ parameters.tf_loglevel }}
+
+
+#########################
+# Declare Build Agents:-
+#########################
+pool:
+  vmImage: $(BuildAgent)
+
+###################
+# Declare Stages:-
+###################
+
+stages:
+  # Terraform Validate Stage
+  - stage: terraform_validate
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), in('${{ parameters.action }}', 'validate', 'checkov', 'plan', 'apply', 'plan_destroy', 'apply_destroy'))
+    jobs:
+      - template: pipe_infra_templates/tf_validate.yaml
+        parameters:
+          backendServiceArm: ${{ variables.BackendServiceArm }}
+          backendAzureRmResourceGroupName: ${{ variables.BackendAzureRmResourceGroupName }}
+          backendAzureRmStorageAccountName: ${{ variables.BackendAzureRmStorageAccountName }}
+          backendAzureRmContainerName: ${{ variables.BackendAzureRmContainerName }}
+          backendAzureRmKey: '${{ variables.Environment }}-${{ variables.Project }}-${{ variables.BackendAzureRmKey }}'
+          environment: ${{ variables.Environment }}
+          terraformVersion: ${{ variables.TerraformVersion }}
+          workingDirectory: ${{ variables.WorkingDirectory }}
+          logLevel: ${{ variables.Loglevel }}
+
+  # Checkov Scan Stage
+  - stage: terraform_checkov_scan
+    dependsOn: terraform_validate
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), in('${{ parameters.action }}', 'checkov', 'plan', 'apply', 'plan_destroy', 'apply_destroy'))
+    jobs:
+      - template: pipe_infra_templates/tf_checkov_scan.yaml
+        parameters:
+          workingDirectory: ${{ variables.WorkingDirectory }}
+
+  # Terraform Plan Stage
+  - stage: terraform_plan
+    dependsOn: terraform_checkov_scan
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), in('${{ parameters.action }}', 'plan', 'apply'))
+    jobs:
+      - template: pipe_infra_templates/tf_plan.yaml
+        parameters:
+          backendServiceArm: ${{ variables.BackendServiceArm }}
+          backendAzureRmResourceGroupName: ${{ variables.BackendAzureRmResourceGroupName }}
+          backendAzureRmStorageAccountName: ${{ variables.BackendAzureRmStorageAccountName }}
+          backendAzureRmContainerName: ${{ variables.BackendAzureRmContainerName }}
+          backendAzureRmKey: '${{ variables.Environment }}-${{ variables.Project }}-${{ variables.BackendAzureRmKey }}'
+          environment: ${{ variables.Environment }}
+          terraformVersion: ${{ variables.TerraformVersion }}
+          workingDirectory: ${{ variables.WorkingDirectory }}
+          infracostApiKey: $(infracostapiKey)
+          logLevel: ${{ variables.Loglevel }}
+
+
+  # Terraform Apply Stage
+  - stage: terraform_apply
+    dependsOn: terraform_plan
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq('${{ parameters.action }}', 'apply'))
+    jobs:
+    - deployment:
+      displayName: 'Terraform Apply'
+      pool:
+        vmImage: $(BuildAgent)
+      environment: 'tf-apply-${{ variables.Project }}-${{ variables.Environment }}'
+      strategy:
+       runOnce:
+         deploy:
+           steps:
+             - template: pipe_infra_templates/tf_apply.yaml
+               parameters:
+                 backendServiceArm: ${{ variables.BackendServiceArm }}
+                 backendAzureRmResourceGroupName: ${{ variables.BackendAzureRmResourceGroupName }}
+                 backendAzureRmStorageAccountName: ${{ variables.BackendAzureRmStorageAccountName }}
+                 backendAzureRmContainerName: ${{ variables.BackendAzureRmContainerName }}
+                 backendAzureRmKey: '${{ variables.Environment }}-${{ variables.Project }}-${{ variables.BackendAzureRmKey }}'
+                 environment: ${{ variables.Environment }}
+                 terraformVersion: ${{ variables.TerraformVersion }}
+                 workingDirectory: ${{ variables.WorkingDirectory }}
+                 logLevel: ${{ variables.Loglevel }}
+
+  # Terraform Plan Destroy Stage
+  - stage: terraform_plan_destroy
+    dependsOn: terraform_checkov_scan
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), in('${{ parameters.action }}', 'plan_destroy', 'apply_destroy'))
+    jobs:
+      - template: pipe_infra_templates/tf_plandestroy.yaml
+        parameters:
+          backendServiceArm: ${{ variables.BackendServiceArm }}
+          backendAzureRmResourceGroupName: ${{ variables.BackendAzureRmResourceGroupName }}
+          backendAzureRmStorageAccountName: ${{ variables.BackendAzureRmStorageAccountName }}
+          backendAzureRmContainerName: ${{ variables.BackendAzureRmContainerName }}
+          backendAzureRmKey: '${{ variables.Environment }}-${{ variables.Project }}-${{ variables.BackendAzureRmKey }}'
+          environment: ${{ variables.Environment }}
+          terraformVersion: ${{ variables.TerraformVersion }}
+          workingDirectory: ${{ variables.WorkingDirectory }}
+          logLevel: ${{ variables.Loglevel }}
+
+
+  # Terraform Apply Destroy Stage
+  - stage: terraform_apply_destroy
+    dependsOn: terraform_plan_destroy
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq('${{ parameters.action }}', 'apply_destroy'))
+    jobs:
+    - deployment:
+      displayName: 'Terraform Apply Destroy'
+      pool:
+        vmImage: $(BuildAgent)
+      environment: 'tf-apply-destroy-${{ variables.Project }}-${{ variables.Environment }}'
+      strategy:
+       runOnce:
+         deploy:
+           steps:
+             - template: pipe_infra_templates/tf_applydestroy.yaml
+               parameters:
+                 backendServiceArm: ${{ variables.BackendServiceArm }}
+                 backendAzureRmResourceGroupName: ${{ variables.BackendAzureRmResourceGroupName }}
+                 backendAzureRmStorageAccountName: ${{ variables.BackendAzureRmStorageAccountName }}
+                 backendAzureRmContainerName: ${{ variables.BackendAzureRmContainerName }}
+                 backendAzureRmKey: '${{ variables.Environment }}-${{ variables.Project }}-${{ variables.BackendAzureRmKey }}'
+                 environment: ${{ variables.Environment }}
+                 terraformVersion: ${{ variables.TerraformVersion }}
+                 workingDirectory: ${{ variables.WorkingDirectory }}
+                 logLevel: ${{ variables.Loglevel }}

@@ -1,0 +1,60 @@
+# Terraform Plan Destroy Job
+jobs:
+  - job: terraformPlanDestroy
+    displayName: "Terraform Plan Destroy"
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - template: tf_install.yaml
+        parameters:
+          terraformVersion: "${{ parameters.terraformVersion }}"
+      - template: tf_replace_tokens.yaml
+        parameters:
+          environment: ${{ parameters.environment }}
+      - template: tf_init.yaml
+        parameters:
+          backendServiceArm: ${{ parameters.backendServiceArm }}
+          backendAzureRmResourceGroupName: ${{ parameters.backendAzureRmResourceGroupName }}
+          backendAzureRmStorageAccountName: ${{ parameters.backendAzureRmStorageAccountName }}
+          backendAzureRmContainerName: ${{ parameters.backendAzureRmContainerName }}
+          backendAzureRmKey: ${{ parameters.backendAzureRmKey }}
+          workingDirectory: ${{ parameters.workingDirectory }}
+
+       # Terraform Workspace Task
+      - template: tf_workspace_select.yaml
+        parameters:
+          environment: ${{ parameters.environment }}
+          backendServiceArm: ${{ parameters.backendServiceArm }}
+          workingDirectory: ${{ parameters.workingDirectory }}
+
+      # Terraform Plan Task
+      - task: TerraformTaskV4@4
+        displayName: "Planning Terraform Destroy"
+        condition: succeeded()
+        inputs:
+          provider: "azurerm"
+          command: "plan"
+          commandOptions: '-input=false -destroy -var-file="tfvars/${{ parameters.environment }}.tfvars" -out=tfdestroy.tfplan'
+          environmentServiceNameAzureRM: "${{ parameters.backendServiceArm }}"
+          workingDirectory: "$(System.DefaultWorkingDirectory)/${{ parameters.workingDirectory }}/"
+        env:
+          TF_LOG: ${{ parameters.logLevel }}
+
+      - task: ArchiveFiles@2
+        displayName: "Archive files"
+        inputs:
+          rootFolderOrFile: '$(Build.SourcesDirectory)/'
+          includeRootFolder: false
+          archiveType: 'zip'
+          archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+          replaceExistingArchive: true
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Making artifact available to apply destroy stage'
+        inputs:
+          PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+          ArtifactName: 'output-${{parameters.environment}}'
+          publishLocation: 'Container'
+
+      - script: echo "Terraform Plan Destroy Completed"
+        displayName: "Post Plan Log"

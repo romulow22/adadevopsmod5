@@ -1,0 +1,11 @@
+steps:
+- task: replacetokens@6
+  displayName: "Replace variables in backend and tfvars"
+  condition: succeeded()
+  inputs:
+    sources: |
+      **/backend.tf
+      **/${{ parameters.environment }}.tfvars
+    tokenPattern: doubleunderscores
+- script: cat $(System.DefaultWorkingDirectory)/tf_infra/tfvars/${{ parameters.environment }}.tfvars
+  displayName: "Post changed variables"

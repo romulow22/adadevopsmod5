@@ -1,0 +1,28 @@
+# Terraform Infracost
+steps:
+  - task: InfracostSetup@2
+    displayName: Setup Infracost
+    inputs:
+      apiKey: "${{ parameters.infracostApiKey }}"
+  - task: TerraformTaskV4@4
+    displayName: "Convert tfplan to Json"
+    condition: succeeded()
+    inputs:
+      provider: "azurerm"
+      command: "custom"
+      customCommand: "show"
+      commandOptions: "-json tfapply.tfplan"
+      outputTo: "file"
+      filename: "$(System.DefaultWorkingDirectory)/${{ parameters.workingDirectory }}/output.json"
+      environmentServiceNameAzureRM: "${{ parameters.backendServiceArm }}"
+      workingDirectory: "$(System.DefaultWorkingDirectory)/${{ parameters.workingDirectory }}"
+  - task: Bash@3
+    displayName: Infracost Output
+    inputs:
+      targetType: 'inline'
+      script: |
+        echo "Infracost version: $(infracost --version)"
+        echo "Setting currency to BRL..."
+        infracost configure set currency BRL
+        echo "Show Cost"
+        infracost breakdown --show-skipped --path "$(System.DefaultWorkingDirectory)/${{ parameters.workingDirectory }}/output.json"

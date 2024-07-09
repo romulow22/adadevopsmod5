@@ -1,0 +1,33 @@
+# Terraform Validate Job
+jobs:
+  - job: terraformValidate
+    displayName: "Terraform Validate"
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - template: tf_install.yaml
+        parameters:
+          terraformVersion: "${{ parameters.terraformVersion }}"
+      - template: tf_replace_tokens.yaml
+        parameters:
+          environment: ${{ parameters.environment }}
+      - template: tf_init.yaml
+        parameters:
+          backendServiceArm: ${{ parameters.backendServiceArm }}
+          backendAzureRmResourceGroupName: ${{ parameters.backendAzureRmResourceGroupName }}
+          backendAzureRmStorageAccountName: ${{ parameters.backendAzureRmStorageAccountName }}
+          backendAzureRmContainerName: ${{ parameters.backendAzureRmContainerName }}
+          backendAzureRmKey: ${{ parameters.backendAzureRmKey }}
+          workingDirectory: ${{ parameters.workingDirectory }}
+
+      # Terraform Validate Task
+      - task: TerraformTaskV4@4
+        displayName: "Validating Terraform"
+        condition: succeeded()
+        inputs:
+          provider: "azurerm"
+          command: "validate"
+          workingDirectory: "$(System.DefaultWorkingDirectory)/${{ parameters.workingDirectory }}/"
+
+      - script: echo "Terraform Validate Completed"
+        displayName: "Post Validate Log"

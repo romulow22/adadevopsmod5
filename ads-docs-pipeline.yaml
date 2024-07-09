@@ -1,0 +1,97 @@
+# Main Infra pipeline
+name: $(BuildDefinitionName)_$(date:yyyyMMdd)$(rev:.r)
+
+trigger:
+ branches:
+  include:
+    - main
+ paths:
+  include:
+    - tf_infra/*
+
+######################
+#DECLARE VARIABLES:-
+######################
+variables:
+  - group: tf-infra-support
+  - template: pipe_variables/docs_vars.yaml
+
+
+#########################
+# Declare Build Agents:-
+#########################
+pool:
+  vmImage: $(BuildAgent)
+
+
+###################
+# Declare Stages:-
+###################
+
+
+stages:
+  - stage: GenerateTerraformDocumentation
+    jobs:
+      - job: gen_tf_docs
+        steps:
+          - checkout: self
+            persistCredentials: true # this allows the later scripts to use the system-provided git token to push changes back to the repo
+
+          ### Link to key vault.
+          - task: AzureKeyVault@1
+            inputs:
+              azureSubscription: ${{ variables.serviceConnectionName }}
+              KeyVaultName: $(keyvaultName)
+              SecretsFilter: $(secretsFilter)
+              RunAsPreJob: true
+            displayName: Get PAToken from Keyvault
+
+          ### Install Terraform-Docs.
+          - script: |
+              wget https://github.com/terraform-docs/terraform-docs/releases/download/v${{ variables.terraformDocsVersion }}/terraform-docs-v${{ variables.terraformDocsVersion }}-linux-amd64.tar.gz
+              tar -xvf terraform-docs-v${{ variables.terraformDocsVersion }}-linux-amd64.tar.gz
+              sudo mv terraform-docs /usr/local/bin/
+            displayName: 'Install terraform-docs'
+
+          ### Remove all old README.md files and generate new README.md files for each TF module.
+          - script: |
+              # Set Modules Root Directory
+              root_dir="$(Build.SourcesDirectory)/${{ variables.WorkingDirectory }}"
+              echo "Root dir: $root_dir"
+
+              # Get all subdirectories (Terraform module directories)
+              terraformModuleDirs=$(find $root_dir -maxdepth 3 -type d)
+
+              # Loop through each directory to cleanup/remove old README files
+              for dir in $terraformModuleDirs; do
+
+                  readMeFiles=$(find "$dir" -name "README.md")
+
+                  for file in $readMeFiles; do
+                      if [ -f "$file" ]; then
+                          rm -f "$file"
+                          echo $file has been removed.                         
+                      fi
+                  done
+
+                  tfFiles=$(find "$dir" -name "*.tf")
+
+                  if [ "$(echo "$tfFiles" | wc -l)" -gt 0 ]; then
+                      terraform-docs markdown table $(realpath "$dir") --output-file "$dir/README.md"
+                  else
+                      echo "No .tf files found."
+                  fi
+              done
+            displayName: 'Cleanup and Generate new README for each TF module'
+
+          ### Commit and push updated README.md files for TF modules.
+          - script: |
+              git config --local user.email "terraform-docs@myOrg.com"
+              git config --local user.name "Terraform Docs"
+              git add "${{ variables.WorkingDirectory }}/**/*.md"
+              git add "${{ variables.WorkingDirectory }}/*.md"
+              git commit -m "Update README.md for each TF module"
+              git push origin HEAD:$(Build.SourceBranchName)
+            displayName: 'Commit and Push updated README.md files for TF modules'
+            env:
+              SYSTEM_ACCESSTOKEN: $(TerraformDocsPAToken)

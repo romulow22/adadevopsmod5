@@ -1,0 +1,17 @@
+variables:
+  - name: BackendServiceArm
+    value: sc-azsub
+  - name: BackendAzureRmContainerName
+    value: tfstatecontainer
+  - name: BackendAzureRmKey
+    value: infra.tfstate
+  - name: TerraformVersion
+    value: latest
+  - name: WorkingDirectory
+    value: 'tf_infra'
+  - name: BuildAgent
+    value: ubuntu-latest
+  - name: BackendAzureRmResourceGroupName
+    value: rg-tfstate-${{ parameters.project }}
+  - name: BackendAzureRmStorageAccountName
+    value: stgtfstate${{ parameters.project }}001

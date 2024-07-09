@@ -1,0 +1,33 @@
+# Terraform Destroy Deploy
+steps:
+  - download: current
+    displayName: 'Download previous job artifacts'
+    artifact: 'output-${{parameters.environment}}'
+
+  - task: ExtractFiles@1
+    displayName: 'Unarchive files'
+    inputs:
+      archiveFilePatterns: '$(Pipeline.Workspace)/output-${{ parameters.environment }}/*.zip'
+      destinationFolder: '$(Pipeline.Workspace)/extract'
+      cleanDestinationFolder: true
+
+  - template: tf_install.yaml
+    parameters:
+      terraformVersion: "${{ parameters.terraformVersion }}"
+
+# Terraform Apply Destroy Task
+  - task: TerraformTaskV4@4
+    displayName: "Destroying Terraform"
+    condition: succeeded()
+    inputs:
+      provider: "azurerm"
+      command: "apply"
+      commandOptions: '-input=false -auto-approve tfdestroy.tfplan '
+      environmentServiceNameAzureRM: "${{ parameters.backendServiceArm }}"
+      workingDirectory: "$(Pipeline.Workspace)/extract/${{ parameters.workingDirectory }}"
+    continueOnError: false
+    env:
+      TF_LOG: ${{ parameters.logLevel }}
+      
+  - script: echo "Terraform Destroy Completed"
+    displayName: "Post Destroy Log"

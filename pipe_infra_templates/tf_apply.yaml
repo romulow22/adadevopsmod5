@@ -1,0 +1,34 @@
+# Terraform Apply Deploy
+steps:
+  - download: current
+    displayName: 'Download previous job artifacts'
+    artifact: 'output-${{parameters.environment}}'
+
+  - task: ExtractFiles@1
+    displayName: 'Unarchive files'
+    inputs:
+      archiveFilePatterns: '$(Pipeline.Workspace)/output-${{ parameters.environment }}/*.zip'
+      destinationFolder: '$(Pipeline.Workspace)/extract'
+      cleanDestinationFolder: true
+
+  - template: tf_install.yaml
+    parameters:
+      terraformVersion: "${{ parameters.terraformVersion }}"
+
+
+# Terraform Apply Task
+  - task: TerraformTaskV4@4
+    displayName: "Applying Terraform"
+    condition: succeeded()
+    inputs:
+      provider: "azurerm"
+      command: "apply"
+      commandOptions: '-input=false -auto-approve tfapply.tfplan'
+      environmentServiceNameAzureRM: "${{ parameters.backendServiceArm }}"
+      workingDirectory: "$(Pipeline.Workspace)/extract/${{ parameters.workingDirectory }}"
+    continueOnError: false
+    env:
+      TF_LOG: ${{ parameters.logLevel }}
+      
+  - script: echo "Terraform Apply Completed"
+    displayName: "Post Apply Log"
